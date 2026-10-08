@@ -41,7 +41,10 @@ services:
       start_period: 2s
 
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.alpine
+    image: myapp:alpine14
     environment:
       DB_HOST: db
       DB_PORT: ${POSTGRES_PORT}

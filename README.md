@@ -346,3 +346,163 @@ curl http://localhost:8080/notes
 ```
 Все данные сохранились. Пример с удалением разбирался в задании 3.
 ![task 5.2](/images/docker_hw2_5_2.png)
+
+# 6
+Откройте образ приложения в dive до и после осмысленной оптимизации Dockerfile. Приложите оба размера, метрики и результат dive; объясните, какие слои или файлы изменились и почему поведение приложения сохранилось. Не приравнивайте PASS к минимальному размеру образа. В отчёте используйте собственный вывод и укажите версии инструментов.
+
+- dive 0.13.1
+- Docker version 29.8.1, build 4a63305
+
+
+Dockerfile до работы с dive:
+```Dockerfile
+FROM python:3.14-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py .
+EXPOSE 8000
+CMD ["python", "app.py"]
+```
+```commandline
+docker build -t myapp:before .
+```
+```commandline
+[+] Building 1.1s (11/11) FINISHED                                                                                                                                                         docker:default
+ => [internal] load build definition from Dockerfile                                                                                                                                                 0.0s
+ => => transferring dockerfile: 199B                                                                                                                                                                 0.0s
+ => [internal] load metadata for docker.io/library/python:3.14-slim                                                                                                                                  1.1s
+ => [auth] library/python:pull token for registry-1.docker.io                                                                                                                                        0.0s
+ => [internal] load .dockerignore                                                                                                                                                                    0.0s
+ => => transferring context: 53B                                                                                                                                                                     0.0s
+ => [1/5] FROM docker.io/library/python:3.14-slim@sha256:f85c5697265c178cc6887276c55fe16cf3d14ca35c3df6a5eab3b360534a55d2                                                                            0.0s
+ => [internal] load build context                                                                                                                                                                    0.0s
+ => => transferring context: 63B                                                                                                                                                                     0.0s
+ => CACHED [2/5] WORKDIR /app                                                                                                                                                                        0.0s
+ => CACHED [3/5] COPY requirements.txt .                                                                                                                                                             0.0s
+ => CACHED [4/5] RUN pip install --no-cache-dir -r requirements.txt                                                                                                                                  0.0s
+ => CACHED [5/5] COPY app.py .                                                                                                                                                                       0.0s
+ => exporting to image                                                                                                                                                                               0.0s
+ => => exporting layers                                                                                                                                                                              0.0s
+ => => writing image sha256:fb988aa8b0b8ba980574075cf1dcd89d66e79ef04d6cd6a365353ace224cea48                                                                                                         0.0s
+ => => naming to docker.io/library/myapp:before 
+```
+```commandline
+docker images myapp:before
+```
+```commandline
+IMAGE          ID             DISK USAGE   CONTENT SIZE   EXTRA
+myapp:before   fb988aa8b0b8        181MB             0B  
+```
+![task_6 before](/images/docker_hw_6_1.png)
+```commandline
+dive myapp:before --ci
+```
+```commandline
+Using default CI config
+Image Source: docker://myapp:before
+Extracting image from docker-engine... (this can take a while for large images)
+Analyzing image...
+  efficiency: 97.8328 %
+  wastedBytes: 5651651 bytes (5.7 MB)
+  userWastedPercent: 5.5338 %
+Inefficient Files:
+Count  Wasted Space  File Path
+    3        2.4 MB  /var/cache/debconf/templates.dat-old
+    3        2.4 MB  /var/cache/debconf/templates.dat
+    3        220 kB  /var/lib/dpkg/status
+    3        220 kB  /var/lib/dpkg/status-old
+    2        130 kB  /var/log/dpkg.log
+    2         83 kB  /var/lib/dpkg/info/perl-base.list
+    2         50 kB  /var/log/apt/term.log
+    3         38 kB  /var/cache/debconf/config.dat
+    3         38 kB  /var/cache/debconf/config.dat-old
+    3         19 kB  /var/log/apt/eipp.log.xz
+    3         13 kB  /var/lib/apt/extended_states
+    2         12 kB  /var/log/apt/history.log
+    2        8.8 kB  /etc/ld.so.cache
+    2         836 B  /var/lib/dpkg/diversions
+    2         648 B  /var/lib/dpkg/diversions-old
+    2         288 B  /var/lib/dpkg/triggers/File
+    3           0 B  /var/lib/dpkg/triggers/Lock
+    2           0 B  /var/lib/dpkg/triggers/Unincorp
+    2           0 B  /tmp
+    3           0 B  /var/lib/dpkg/lock
+Results:
+  PASS: highestUserWastedPercent
+  SKIP: highestWastedBytes: rule disabled
+  PASS: lowestEfficiency
+Result:PASS [Total:3] [Passed:2] [Failed:0] [Warn:0] [Skipped:1]
+```
+Очень хорошо. То, что dive отметил как Inefficent Files это не мои косяки, а файлы из исходных образов. Можно попробовать сменить образ с `python:3.14-slim` на что-то другое, например `python:3.14-alpine`
+```commandline
+docker build -t myapp:alpine14 .
+```
+```commandline
+docker images myapp:alpine14
+```
+```commandline
+IMAGE            ID             DISK USAGE   CONTENT SIZE   EXTRA
+myapp:alpine14   0769e33339c6        110MB             0B        
+```
+![task_6 after](/images/docker_hw_6_2.png)
+```commandline
+dive myapp:alpine14 --ci
+```
+```commandline
+  Using default CI config
+Image Source: docker://myapp:alpine14
+Extracting image from docker-engine... (this can take a while for large images)
+Analyzing image...
+  efficiency: 94.0315 %
+  wastedBytes: 12815885 bytes (13 MB)
+  userWastedPercent: 12.6289 %
+Inefficient Files:
+Count  Wasted Space  File Path
+    2         10 MB  /usr/lib/libcrypto.so.3
+    2        1.7 MB  /usr/lib/libssl.so.3
+    3        545 kB  /etc/ssl/certs/ca-certificates.crt
+    2        200 kB  /usr/lib/ossl-modules/legacy.so
+    3        126 kB  /lib/apk/db/installed
+    2         95 kB  /usr/lib/engines-3/loader_attic.so
+    2         45 kB  /usr/lib/engines-3/padlock.so
+    2         37 kB  /usr/lib/engines-3/afalg.so
+    2         28 kB  /usr/lib/engines-3/capi.so
+    2         25 kB  /etc/ssl/openssl.cnf
+    2         25 kB  /etc/ssl/openssl.cnf.dist
+    2         15 kB  /var/log/apk.log
+    3        6.1 kB  /lib/apk/db/scripts.tar.gz
+    2         824 B  /etc/ssl/ct_log_list.cnf
+    2         824 B  /etc/ssl/ct_log_list.cnf.dist
+    3         557 B  /lib/apk/db/triggers
+    3         300 B  /etc/apk/world
+    2           0 B  /usr/bin/lzcat
+    2           0 B  /usr/bin/find
+    2           0 B  /usr/bin/awk
+    2           0 B  /usr/bin/strings
+    2           0 B  /usr/bin/unlzma
+    2           0 B  /usr/bin/lzma
+    2           0 B  /bin/tar
+    2           0 B  /usr/bin/xargs
+    2           0 B  /usr/bin/xzcat
+    2           0 B  /tmp
+    2           0 B  /usr/bin/unxz
+Results:
+  FAIL: highestUserWastedPercent: too many bytes wasted, relative to the user bytes added (%-user-wasted-bytes=0.12628930107369535 > threshold=0.1)
+  SKIP: highestWastedBytes: rule disabled
+  PASS: lowestEfficiency
+Result:FAIL [Total:3] [Passed:1] [Failed:1] [Warn:0] [Skipped:1]
+```
+Сам образ стал меньше, но эффективность слоёв упала, и dive ругается.
+Но мне кажется, что итоговый размер важнее, чем userWastedPercent
+
+сделал новый Dockerfile с изменённым FROM
+Поменял docker-compose.yml
+```commandline
+docker compose up -d --build
+curl http://localhost:8080/notes
+```
+```json
+[{"content":"контрольная заметка","id":1},{"content":"вторая заметка","id":2}]
+```
+работает
