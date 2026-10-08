@@ -21,10 +21,14 @@ docker_homework_2-redis-1   redis:7-alpine          "docker-entrypoint.s…"   r
 ```
 ```commandline
 curl -X POST http://localhost:8000/note   -H "Content-Type: application/json"   -d '{"content": "заметка"}'
- curl -X POST http://localhost:8000/note   -H "Content-Type: application/json"   -d '{"content": "вторая заметка"}'
 ```
-```
+```json
 {"content":"заметка","id":1,"notes_count":1}
+```
+```commandline
+curl -X POST http://localhost:8000/note   -H "Content-Type: application/json"   -d '{"content": "вторая заметка"}'
+```
+```json
 {"content":"вторая заметка","id":2,"notes_count":2}
 ```
 ![первое задание](/images/docker_hw2_1.png)
@@ -46,7 +50,7 @@ docker compose up --build -d
 ```commandline
 curl -X POST http://localhost:8000/note   -H "Content-Type: application/json"   -d '{"content": "контрольная заметка"}'
 ```
-```commandline
+```json
 {"content":"контрольная заметка","id":1,"notes_count":1}
 ```
 ```commandline
@@ -75,13 +79,13 @@ docker compose up -d db
 ```commandline
 curl http://localhost:8000/notes
 ```
-```
+```json
 [{"content":"контрольная заметка","id":1}]
 ```
 ```commandline
 curl -X POST http://localhost:8000/note   -H "Content-Type: application/json"   -d '{"content": "вторая заметка"}'
 ```
-```commandline
+```json
 {"content":"контрольная заметка","id":1,"notes_count":2}
 ```
 ![второе задание](/images/docker_hw2_2.png)
@@ -154,7 +158,7 @@ docker_homework_2-redis-1   redis:7-alpine          "docker-entrypoint.s…"   r
 ```commandline
 curl http://localhost:8000/notes
 ```
-```commandline
+```json
 [{"content":"контрольная заметка","id":1},{"content":"вторая заметка","id":2}]
 ```
 ![task 3.1](/images/docker_hw2_3_1.png)
@@ -196,7 +200,7 @@ exit=1
 curl http://localhost:8080/health
 ```
 при GET на этот эндпоинт приложение проверяет доступность db и redis и возвращает рзультаты
-```
+```json
 {"db":"ok","redis":"ok","status":"ok"}
 ```
 ![task 4](/images/docker_hw2_4.png)
@@ -204,3 +208,141 @@ curl http://localhost:8080/health
 
 # 5
 Вынесите изменяемые значения в переменные. Добавьте в Git `.env.example` с безопасными примерными значениями и исключите рабочую `.env` через `.gitignore`. Покажите итог `docker compose config`, удалив реальные секреты из отчётного вывода. Объясните источник имени проекта, его приоритет и имена контейнеров, сетей и томов. Покажите различие `down` и `down -v` только на данных собственного стенда, которые можно восстановить.
+
+```commandline
+docker compose --env-file .env.example config
+```
+вместо настоящего .env используется .env.example, сейчас разница только в SECRET_DIR, потому что везде в настоящем конфиге дефолтные пользователь и пароль postgres
+```yaml
+name: docker_homework_2
+services:
+  app:
+    build:
+      context: /home/andrew-goodman/Программирование/devops_course/docker_homework_2
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+        required: true
+      redis:
+        condition: service_healthy
+        required: true
+    environment:
+      DB_HOST: db
+      DB_NAME: notes
+      DB_PASSWORD: postgres
+      DB_PORT: "5432"
+      DB_USER: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      SECRET_DIR: cuisine
+    networks:
+      back: null
+      front: null
+  db:
+    environment:
+      PGPORT: "5432"
+      POSTGRES_DB: notes
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres -d notes
+      timeout: 3s
+      interval: 3s
+      retries: 10
+      start_period: 5s
+    image: postgres:16
+    networks:
+      back: null
+    volumes:
+      - type: volume
+        source: pgdata
+        target: /var/lib/postgresql/data
+        volume: {}
+  nginx:
+    depends_on:
+      app:
+        condition: service_started
+        required: true
+    image: nginx:1.27-alpine
+    networks:
+      front: null
+    ports:
+      - mode: ingress
+        target: 80
+        published: "8080"
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: /home/andrew-goodman/Программирование/devops_course/docker_homework_2/nginx.conf
+        target: /etc/nginx/conf.d/default.conf
+        read_only: true
+        bind: {}
+  redis:
+    command:
+      - redis-server
+      - --port
+      - "6379"
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      timeout: 3s
+      interval: 3s
+      retries: 10
+      start_period: 2s
+    image: redis:7-alpine
+    networks:
+      back: null
+networks:
+  back:
+    name: docker_homework_2_back
+    driver: bridge
+  front:
+    name: docker_homework_2_front
+    driver: bridge
+volumes:
+  pgdata:
+    name: docker_homework_2_pgdata
+```
+имя `docker_homework_2` берётся последним по приоритету из названия папки, потому что я решил не заморачиваться. Подставляется как префикс в имена всего остального
+```commandline
+curl http://localhost:8080/notes
+```
+```json
+[{"content":"контрольная заметка","id":1},{"content":"вторая заметка","id":2}]
+```
+```commandline
+docker compose down
+```
+```commandline
+[+] down 6/6
+ ✔ Container docker_homework_2-nginx-1 Removed                                                                                                                                                        0.3s
+ ✔ Container docker_homework_2-app-1   Removed                                                                                                                                                       10.3s
+ ✔ Container docker_homework_2-redis-1 Removed                                                                                                                                                        0.2s
+ ✔ Container docker_homework_2-db-1    Removed                                                                                                                                                        0.2s
+ ✔ Network docker_homework_2_front     Removed                                                                                                                                                        0.2s
+ ✔ Network docker_homework_2_back      Removed     
+```
+```commandline
+docker compose up -d
+```
+```commandline
+WARN[0000] volume "docker_homework_2_pgdata" already exists but was not created by Docker Compose. Use `external: true` to use an existing volume 
+[+] up 4/4
+ ✔ Container docker_homework_2-redis-1 Healthy                                                                                                                                                        2.3s
+ ✔ Container docker_homework_2-db-1    Healthy                                                                                                                                                        5.3s
+ ✔ Container docker_homework_2-app-1   Started                                                                                                                                                        0.2s
+ ✔ Container docker_homework_2-nginx-1 Started
+```
+```commandline
+curl http://localhost:8080/notes
+```
+```json
+[{"content":"контрольная заметка","id":1},{"content":"вторая заметка","id":2}]
+```
+Все данные сохранились. Пример с удалением разбирался в задании 3.
+![task 5.2](/images/docker_hw2_5_2.png)
